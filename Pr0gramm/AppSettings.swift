@@ -2,13 +2,13 @@
 // --- START OF COMPLETE FILE ---
 
 import Foundation
-import Combine // Needed for observer token
+import Combine
 import os
 import Kingfisher
-import CloudKit // Needed for NSUbiquitousKeyValueStore
-import SwiftUI // Needed for ColorScheme, Color
-import BackgroundTasks // Für BGTaskScheduler
-import UserNotifications // Für Berechtigungen und Badge
+import CloudKit
+import SwiftUI
+import BackgroundTasks
+import UserNotifications
 
 enum BackgroundFetchInterval: Int, CaseIterable, Identifiable {
     case minutes30 = 1800 // 30 * 60
@@ -146,123 +146,127 @@ enum AccentColorChoice: String, CaseIterable, Identifiable {
 @MainActor
 class AppSettings: ObservableObject {
 
-    private nonisolated static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "AppSettings")
+    private nonisolated static let logger = LoggerFactory.create(for: AppSettings.self)
     private let cacheService = CacheService()
     private nonisolated let cloudStore = NSUbiquitousKeyValueStore.default
 
 
-    private static let isVideoMutedPreferenceKey = "isVideoMutedPreference_v1"
-    private static let feedTypeKey = "feedTypePreference_v1"
-    private static let showSFWKey = "showSFWPreference_v1"
-    private static let showNSFWKey = "showNSFWPreference_v1"
-    private static let showNSFLKey = "showNSFLPreference_v1"
-    private static let showNSFPKey = "showNSFPPreference_v1"
-    private static let showPOLKey = "showPOLPreference_v1"
-    private static let maxImageCacheSizeMBKey = "maxImageCacheSizeMB_v1"
-    private static let commentSortOrderKey = "commentSortOrder_v1"
-    private static let hideSeenItemsKey = "hideSeenItems_v1"
-    private static let subtitleActivationModeKey = "subtitleActivationMode_v1"
-    private static let selectedCollectionIdForFavoritesKey = "selectedCollectionIdForFavorites_v1"
-    private static let colorSchemeSettingKey = "colorSchemeSetting_v1"
-    private static let gridSizeSettingKey = "gridSizeSetting_v1"
-    private static let enableStartupFiltersKey = "enableStartupFilters_v1"
+    // Legacy keys for migration - can be removed after migration
     private static let startupFilterSFWKey = "startupFilterSFW_v1"
     private static let startupFilterNSFWKey = "startupFilterNSFW_v1"
     private static let startupFilterNSFLKey = "startupFilterNSFL_v1"
     private static let startupFilterPOLKey = "startupFilterPOL_v1"
-    private static let accentColorChoiceKey = "accentColorChoice_v1"
     private static let localSeenItemsCacheKey = "seenItems_v1"
     private static let iCloudSeenItemsKey = "seenItemIDs_iCloud_v2"
-    private static let enableUnlimitedStyleFeedKey = "enableUnlimitedStyleFeed_v1"
-    private static let enableBackgroundFetchForNotificationsKey = "enableBackgroundFetchForNotifications_v1"
-    private static let backgroundFetchIntervalKey = "backgroundFetchInterval_v1"
-    private static let forcePhoneLayoutOnPadAndMacKey = "forcePhoneLayoutOnPadAndMac_v1" // Neuer Key
     private var keyValueStoreChangeObserver: NSObjectProtocol?
 
-    @Published var isVideoMuted: Bool { didSet { UserDefaults.standard.set(isVideoMuted, forKey: Self.isVideoMutedPreferenceKey) } }
-    @Published var feedType: FeedType {
-        didSet {
-            UserDefaults.standard.set(feedType.rawValue, forKey: Self.feedTypeKey)
-            Self.logger.info("Feed type changed to: \(self.feedType.displayName)")
-            if isUserLoggedInForApiFlags && feedType != .junk {
+    @UserDefaultPublished(key: "isVideoMutedPreference_v1", defaultValue: true)
+    var isVideoMuted: Bool
+    @UserDefaultPublished(key: "feedTypePreference_v1", defaultValue: FeedType.promoted.rawValue)
+    private var _feedTypeRawValue: Int
+    
+    var feedType: FeedType {
+        get { FeedType(rawValue: _feedTypeRawValue) ?? .promoted }
+        set { 
+            _feedTypeRawValue = newValue.rawValue
+            Self.logger.info("Feed type changed to: \(newValue.displayName)")
+            if isUserLoggedInForApiFlags && newValue != .junk {
                 self.showNSFP = self.showSFW
             }
         }
     }
-    @Published var showSFW: Bool {
+    @UserDefaultPublished(key: "showSFWPreference_v1", defaultValue: true)
+    var showSFW: Bool {
         didSet {
-            UserDefaults.standard.set(showSFW, forKey: Self.showSFWKey)
             if isUserLoggedInForApiFlags && feedType != .junk {
                 self.showNSFP = showSFW
                 AppSettings.logger.debug("showSFW changed to \(self.showSFW). Automatically set showNSFP to \(self.showNSFP) (logged in, not junk).")
             }
         }
     }
-    @Published var showNSFW: Bool { didSet { UserDefaults.standard.set(showNSFW, forKey: Self.showNSFWKey) } }
-    @Published var showNSFL: Bool { didSet { UserDefaults.standard.set(showNSFL, forKey: Self.showNSFLKey) } }
-    @Published var showNSFP: Bool {
+    @UserDefaultPublished(key: "showNSFWPreference_v1", defaultValue: false)
+    var showNSFW: Bool
+    
+    @UserDefaultPublished(key: "showNSFLPreference_v1", defaultValue: false)
+    var showNSFL: Bool
+    @UserDefaultPublished(key: "showNSFPPreference_v1", defaultValue: true)
+    var showNSFP: Bool {
         didSet {
-            UserDefaults.standard.set(showNSFP, forKey: Self.showNSFPKey)
             AppSettings.logger.debug("showNSFP (internal state) changed to \(self.showNSFP).")
         }
     }
-    @Published var showPOL: Bool { didSet { UserDefaults.standard.set(showPOL, forKey: Self.showPOLKey) } }
+    @UserDefaultPublished(key: "showPOLPreference_v1", defaultValue: false)
+    var showPOL: Bool
 
-    @Published var maxImageCacheSizeMB: Int {
+    @UserDefaultPublished(key: "maxImageCacheSizeMB_v1", defaultValue: 100)
+    var maxImageCacheSizeMB: Int {
         didSet {
-            UserDefaults.standard.set(maxImageCacheSizeMB, forKey: Self.maxImageCacheSizeMBKey)
             updateKingfisherCacheLimit()
         }
     }
-    @Published var commentSortOrder: CommentSortOrder {
-        didSet {
-            UserDefaults.standard.set(commentSortOrder.rawValue, forKey: Self.commentSortOrderKey)
-            Self.logger.info("Comment sort order changed to: \(self.commentSortOrder.displayName)")
+    @UserDefaultPublished(key: "commentSortOrder_v1", defaultValue: CommentSortOrder.date.rawValue)
+    private var _commentSortOrderRawValue: Int
+    
+    var commentSortOrder: CommentSortOrder {
+        get { CommentSortOrder(rawValue: _commentSortOrderRawValue) ?? .date }
+        set { 
+            _commentSortOrderRawValue = newValue.rawValue
+            Self.logger.info("Comment sort order changed to: \(newValue.displayName)")
         }
     }
     
-    @Published var hideSeenItems: Bool {
+    @UserDefaultPublished(key: "hideSeenItems_v1", defaultValue: false)
+    var hideSeenItems: Bool {
         didSet {
-            UserDefaults.standard.set(hideSeenItems, forKey: Self.hideSeenItemsKey)
             Self.logger.info("Hide seen items setting changed to: \(self.hideSeenItems)")
         }
     }
 
-    @Published var subtitleActivationMode: SubtitleActivationMode {
-        didSet {
-            UserDefaults.standard.set(subtitleActivationMode.rawValue, forKey: Self.subtitleActivationModeKey)
-            Self.logger.info("Subtitle activation mode changed to: \(self.subtitleActivationMode.displayName)")
+    @UserDefaultPublished(key: "subtitleActivationMode_v1", defaultValue: SubtitleActivationMode.disabled.rawValue)
+    private var _subtitleActivationModeRawValue: Int
+    
+    var subtitleActivationMode: SubtitleActivationMode {
+        get { SubtitleActivationMode(rawValue: _subtitleActivationModeRawValue) ?? .disabled }
+        set { 
+            _subtitleActivationModeRawValue = newValue.rawValue
+            Self.logger.info("Subtitle activation mode changed to: \(newValue.displayName)")
         }
     }
-    @Published var selectedCollectionIdForFavorites: Int? {
+    @UserDefaultOptional(key: "selectedCollectionIdForFavorites_v1")
+    var selectedCollectionIdForFavorites: Int? {
         didSet {
             if let newId = selectedCollectionIdForFavorites {
-                UserDefaults.standard.set(newId, forKey: Self.selectedCollectionIdForFavoritesKey)
                 Self.logger.info("Selected Collection ID for Favorites changed to: \(newId)")
             } else {
-                UserDefaults.standard.removeObject(forKey: Self.selectedCollectionIdForFavoritesKey)
                 Self.logger.info("Selected Collection ID for Favorites cleared (set to nil).")
             }
         }
     }
-    @Published var colorSchemeSetting: ColorSchemeSetting {
-        didSet {
-            UserDefaults.standard.set(colorSchemeSetting.rawValue, forKey: Self.colorSchemeSettingKey)
-            Self.logger.info("Color scheme setting changed to: \(self.colorSchemeSetting.displayName)")
-        }
-    }
-    @Published var gridSize: GridSizeSetting {
-        didSet {
-            if oldValue != gridSize {
-                UserDefaults.standard.set(gridSize.rawValue, forKey: Self.gridSizeSettingKey)
-                Self.logger.info("Grid size setting changed to: \(self.gridSize.displayName) (rawValue: \(self.gridSize.rawValue))")
-            }
+    @UserDefaultPublished(key: "colorSchemeSetting_v1", defaultValue: ColorSchemeSetting.system.rawValue)
+    private var _colorSchemeSettingRawValue: Int
+    
+    var colorSchemeSetting: ColorSchemeSetting {
+        get { ColorSchemeSetting(rawValue: _colorSchemeSettingRawValue) ?? .system }
+        set { 
+            _colorSchemeSettingRawValue = newValue.rawValue
+            Self.logger.info("Color scheme setting changed to: \(newValue.displayName)")
         }
     }
     
-    @Published var enableStartupFilters: Bool {
+    @UserDefaultPublished(key: "gridSizeSetting_v1", defaultValue: GridSizeSetting.small.rawValue)
+    private var _gridSizeSettingRawValue: Int
+    
+    var gridSize: GridSizeSetting {
+        get { GridSizeSetting(rawValue: _gridSizeSettingRawValue) ?? .small }
+        set { 
+            _gridSizeSettingRawValue = newValue.rawValue
+            Self.logger.info("Grid size setting changed to: \(newValue.displayName) (rawValue: \(newValue.rawValue))")
+        }
+    }
+    
+    @UserDefaultPublished(key: "enableStartupFilters_v1", defaultValue: false)
+    var enableStartupFilters: Bool {
         didSet {
-            UserDefaults.standard.set(enableStartupFilters, forKey: Self.enableStartupFiltersKey)
             Self.logger.info("Enable startup filters setting changed to: \(self.enableStartupFilters)")
             if enableStartupFilters {
                 if UserDefaults.standard.object(forKey: Self.startupFilterSFWKey) == nil { self.startupFilterSFW = true }
@@ -272,36 +276,40 @@ class AppSettings: ObservableObject {
             }
         }
     }
-    @Published var startupFilterSFW: Bool {
-        didSet {
-            UserDefaults.standard.set(startupFilterSFW, forKey: Self.startupFilterSFWKey)
-        }
-    }
-    @Published var startupFilterNSFW: Bool { didSet { UserDefaults.standard.set(startupFilterNSFW, forKey: Self.startupFilterNSFWKey) } }
-    @Published var startupFilterNSFL: Bool { didSet { UserDefaults.standard.set(startupFilterNSFL, forKey: Self.startupFilterNSFLKey) } }
-    @Published var startupFilterPOL: Bool { didSet { UserDefaults.standard.set(startupFilterPOL, forKey: Self.startupFilterPOLKey) } }
+    
+    @UserDefaultPublished(key: "startupFilterSFW_v1", defaultValue: true)
+    var startupFilterSFW: Bool
+    
+    @UserDefaultPublished(key: "startupFilterNSFW_v1", defaultValue: false)
+    var startupFilterNSFW: Bool
+    
+    @UserDefaultPublished(key: "startupFilterNSFL_v1", defaultValue: false)
+    var startupFilterNSFL: Bool
+    
+    @UserDefaultPublished(key: "startupFilterPOL_v1", defaultValue: false)
+    var startupFilterPOL: Bool
 
-    @Published var accentColorChoice: AccentColorChoice {
-        didSet {
-            if oldValue != accentColorChoice {
-                UserDefaults.standard.set(accentColorChoice.rawValue, forKey: Self.accentColorChoiceKey)
-                Self.logger.info("Accent color choice changed to: \(self.accentColorChoice.displayName)")
-            }
+    @UserDefaultPublished(key: "accentColorChoice_v1", defaultValue: AccentColorChoice.blue.rawValue)
+    private var _accentColorChoiceRawValue: String
+    
+    var accentColorChoice: AccentColorChoice {
+        get { AccentColorChoice(rawValue: _accentColorChoiceRawValue) ?? .blue }
+        set { 
+            _accentColorChoiceRawValue = newValue.rawValue
+            Self.logger.info("Accent color choice changed to: \(newValue.displayName)")
         }
     }
     
-    @Published var enableUnlimitedStyleFeed: Bool {
+    @UserDefaultPublished(key: "enableUnlimitedStyleFeed_v1", defaultValue: false)
+    var enableUnlimitedStyleFeed: Bool {
         didSet {
-            if oldValue != enableUnlimitedStyleFeed {
-                UserDefaults.standard.set(enableUnlimitedStyleFeed, forKey: Self.enableUnlimitedStyleFeedKey)
-                Self.logger.info("Experimental 'Enable Unlimited Style Feed' setting changed to: \(self.enableUnlimitedStyleFeed)")
-            }
+            Self.logger.info("Experimental 'Enable Unlimited Style Feed' setting changed to: \(self.enableUnlimitedStyleFeed)")
         }
     }
 
-    @Published var enableBackgroundFetchForNotifications: Bool {
+    @UserDefaultPublished(key: "enableBackgroundFetchForNotifications_v1", defaultValue: false)
+    var enableBackgroundFetchForNotifications: Bool {
         didSet {
-            UserDefaults.standard.set(enableBackgroundFetchForNotifications, forKey: Self.enableBackgroundFetchForNotificationsKey)
             Self.logger.info("Enable Background Fetch for Notifications setting changed to: \(self.enableBackgroundFetchForNotifications)")
             if enableBackgroundFetchForNotifications {
                 BackgroundNotificationManager.shared.requestNotificationPermission()
@@ -317,23 +325,24 @@ class AppSettings: ObservableObject {
         }
     }
     
-    @Published var backgroundFetchInterval: BackgroundFetchInterval {
-        didSet {
-            UserDefaults.standard.set(backgroundFetchInterval.rawValue, forKey: Self.backgroundFetchIntervalKey)
-            Self.logger.info("Background Fetch Interval setting changed to: \(self.backgroundFetchInterval.displayName)")
+    @UserDefaultPublished(key: "backgroundFetchInterval_v1", defaultValue: BackgroundFetchInterval.hours2.rawValue)
+    private var _backgroundFetchIntervalRawValue: Int
+    
+    var backgroundFetchInterval: BackgroundFetchInterval {
+        get { BackgroundFetchInterval(rawValue: _backgroundFetchIntervalRawValue) ?? .hours2 }
+        set { 
+            _backgroundFetchIntervalRawValue = newValue.rawValue
+            Self.logger.info("Background Fetch Interval setting changed to: \(newValue.displayName)")
             if enableBackgroundFetchForNotifications {
                 BackgroundNotificationManager.shared.scheduleAppRefresh()
             }
         }
     }
 
-    // Neue Einstellung für das Layout
-    @Published var forcePhoneLayoutOnPadAndMac: Bool {
+    @UserDefaultPublished(key: "forcePhoneLayoutOnPadAndMac_v1", defaultValue: false)
+    var forcePhoneLayoutOnPadAndMac: Bool {
         didSet {
-            if oldValue != forcePhoneLayoutOnPadAndMac {
-                UserDefaults.standard.set(forcePhoneLayoutOnPadAndMac, forKey: Self.forcePhoneLayoutOnPadAndMacKey)
-                Self.logger.info("Force phone layout on iPad/Mac setting changed to: \(self.forcePhoneLayoutOnPadAndMac)")
-            }
+            Self.logger.info("Force phone layout on iPad/Mac setting changed to: \(self.forcePhoneLayoutOnPadAndMac)")
         }
     }
 

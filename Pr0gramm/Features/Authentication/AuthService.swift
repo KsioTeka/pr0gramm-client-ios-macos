@@ -89,7 +89,7 @@ class AuthService: ObservableObject {
     private let unreadCountSyncInterval: TimeInterval = 300
 
 
-    nonisolated private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "AuthService")
+    nonisolated private static let logger = LoggerFactory.create(for: AuthService.self)
 
     init(appSettings: AppSettings) {
         self.appSettings = appSettings

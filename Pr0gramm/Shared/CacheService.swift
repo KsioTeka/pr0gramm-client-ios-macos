@@ -9,7 +9,7 @@ import os
 @MainActor
 class CacheService {
 
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "CacheService")
+    private static let logger = LoggerFactory.create(for: CacheService.self)
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
     private let cacheFileExtension = ".json"
