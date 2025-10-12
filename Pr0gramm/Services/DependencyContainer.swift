@@ -76,10 +76,7 @@ class DependencyContainer {
         register(voteManager, for: VoteManagerProtocol.self)
         
         // App Settings
-        let appSettings = AppSettings(
-            cacheService: cacheService,
-            logger: logger
-        )
+        let appSettings = AppSettings(cacheService: cacheService)
         register(appSettings, for: SettingsServiceProtocol.self)
         
         // Main Auth Service (Coordinator)

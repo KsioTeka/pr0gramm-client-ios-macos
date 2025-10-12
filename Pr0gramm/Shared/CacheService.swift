@@ -16,7 +16,8 @@ class CacheService {
     /// The maximum size allowed for the data cache directory (feeds, favorites etc.) in bytes.
     private let maxDataCacheSizeBytes: Int64 = 50 * 1024 * 1024 // 50 MB
 
-    init() {
+    init(logger: LoggerProtocol = LoggerFactory.create(for: Self.self)) {
+        self.logger = logger
         // Determine the base cache directory URL
         guard let cacheBaseURL = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             fatalError("CacheService Error: Could not access Caches directory.")
