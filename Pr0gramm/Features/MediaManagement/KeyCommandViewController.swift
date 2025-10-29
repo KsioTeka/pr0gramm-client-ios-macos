@@ -2,70 +2,37 @@
 // --- START OF COMPLETE FILE ---
 
 import UIKit
-import os // Import os
+import os
 
-/// A simple `UIViewController` designed to become the first responder
-/// and capture keyboard events (specifically arrow keys) using the `pressesBegan` method.
-/// It then forwards these events to a `KeyboardActionHandler`.
+/// Captures keyboard events and forwards relevant arrow key presses to a `KeyboardActionHandler`.
 class KeyCommandViewController: UIViewController {
-
-    // --- NEW: Add logger ---
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "KeyCommandVC")
-    // --- END NEW ---
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Pr0gramm",
+        category: "KeyCommandViewController"
+    )
 
     var actionHandler: KeyboardActionHandler?
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        Self.logger.debug("viewDidAppear - Attempting to become first responder...") // Use logger
+        Self.logger.debug("viewDidAppear - requesting first responder status")
         becomeFirstResponder()
     }
 
-    override var canBecomeFirstResponder: Bool {
-        // Self.logger.trace("canBecomeFirstResponder called - Returning true") // Use logger (optional trace)
-        return true
-    }
+    override var canBecomeFirstResponder: Bool { true }
 
-    /// Intercepts key presses to handle left and right arrow keys.
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        var didHandleEvent = false
-        for press in presses {
-            guard let key = press.key else { continue }
-
-            // --- MODIFIED: Use .rawValue for modifierFlags ---
-            Self.logger.debug("Key Pressed - HIDUsage: \(key.keyCode.rawValue), Modifiers: \(key.modifierFlags.rawValue)") // Use logger and rawValue
-            // --- END MODIFICATION ---
-
-            switch key.keyCode {
-            case .keyboardLeftArrow:
-                Self.logger.debug("Left arrow detected via pressesBegan.") // Use logger
-                actionHandler?.selectPreviousAction?()
-                didHandleEvent = true
-            case .keyboardRightArrow:
-                Self.logger.debug("Right arrow detected via pressesBegan.") // Use logger
-                actionHandler?.selectNextAction?()
-                didHandleEvent = true
-             // Handle Up/Down arrows
-            case .keyboardUpArrow:
-                Self.logger.debug("Up arrow detected, calling seek forward action.") // Use logger
-                actionHandler?.seekForwardAction?() // Trigger seek forward
-                didHandleEvent = true
-            case .keyboardDownArrow:
-                Self.logger.debug("Down arrow detected, calling seek backward action.") // Use logger
-                actionHandler?.seekBackwardAction?() // Trigger seek backward
-                didHandleEvent = true
-            default:
-                break // Ignore other keys
-            }
-
-            if didHandleEvent { break }
+        guard let handler = actionHandler else {
+            Self.logger.debug("No action handler configured, forwarding to super.pressesBegan")
+            super.pressesBegan(presses, with: event)
+            return
         }
 
-        if !didHandleEvent {
-            Self.logger.debug("Event not handled by us, calling super.pressesBegan.") // Use logger
-            super.pressesBegan(presses, with: event)
+        if handler.handlePresses(presses, logger: Self.logger) != nil {
+            Self.logger.debug("Arrow key handled, skipping super.pressesBegan")
         } else {
-             Self.logger.debug("Arrow key handled by us, NOT calling super.pressesBegan.") // Use logger
+            Self.logger.debug("No relevant arrow key detected, forwarding to super.pressesBegan")
+            super.pressesBegan(presses, with: event)
         }
     }
 }
