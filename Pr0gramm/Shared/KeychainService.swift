@@ -5,7 +5,7 @@ import os
 /// A service for securely storing and retrieving sensitive data like session cookies and usernames using the iOS Keychain.
 class KeychainService {
 
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "KeychainService")
+    private static let logger = LoggerFactory.create(for: KeychainService.self)
     private let serviceName: String
     /// Internal key used to store the cookie expiration date as a timestamp, as `Date` objects are not directly serializable for Keychain storage.
     private let expiresDateTimestampKey = "expiresDateTimestamp"

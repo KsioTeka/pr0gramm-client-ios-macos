@@ -410,7 +410,7 @@ extension Array where Element == URLQueryItem {
 class APIService {
     struct LoginRequest { let username: String; let password: String; let captcha: String?; let token: String? }
 
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "APIService")
+    private static let logger = LoggerFactory.create(for: APIService.self)
     private let baseURL = URL(string: "https://pr0gramm.com/api")!
     private let decoder = JSONDecoder()
 
